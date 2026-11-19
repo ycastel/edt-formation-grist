@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<script src="https://numerique.gouv.fr"></script>
+<script src="https://getgrist.com"></script>
 <style>
 body{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;margin:0;padding:1rem}
 .card{background:#fff;padding:1.2rem;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:1rem}
@@ -19,7 +19,7 @@ th,td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left} th{backgro
 <div class="card row" style="justify-content:space-between">
   <div>
     <h3 style="margin:0;color:#1e3a8a">📅 Portail EDT — Formation Initiale</h3>
-    <small id="diag" style="color:#64748b;font-weight:600">⏳ Initialisation du pont Grist...</small>
+    <small id="diag" style="color:#64748b;font-weight:600">⏳ Connexion à Grist en cours...</small>
   </div>
   <div class="row">
     <button class="btn" onclick="init()">🔄 Actualiser</button>
@@ -55,6 +55,11 @@ function toMap(t) {
 
 async function init() {
   const diag = document.getElementById('diag');
+  if (typeof grist === 'undefined') {
+    diag.style.color = '#dc2626';
+    diag.textContent = '❌ Erreur : bibliothèque grist-plugin-api.js non chargée.';
+    return;
+  }
   try {
     const [c, f, e, s] = await Promise.all([
       grist.docApi.fetchTable('Calendrier_Cadre'),
@@ -72,17 +77,19 @@ async function init() {
     render();
   } catch (err) {
     diag.style.color = '#dc2626';
-    diag.textContent = `❌ Erreur de lecture : ${err.message || err}`;
+    diag.textContent = `❌ Accès refusé ou table introuvable : ${err.message || err}`;
   }
 }
 
-grist.ready({
-  requiredAccess: 'full',
-  onEditOptions: () => {}
+window.addEventListener('load', () => {
+  if (typeof grist !== 'undefined') {
+    grist.ready({ requiredAccess: 'full' });
+    grist.onRecords(() => init());
+    setTimeout(init, 500);
+  } else {
+    document.getElementById('diag').textContent = '❌ Script API Grist bloqué par le navigateur.';
+  }
 });
-grist.onOptions(() => init());
-setTimeout(init, 1000);
-
 
 function fD(ts) { return typeof ts === 'number' ? new Date(ts*1000).toLocaleDateString('fr-FR') : String(ts||''); }
 
@@ -90,7 +97,6 @@ function render() {
   const d = document.getElementById('disc').value;
   document.getElementById('fEcue').innerHTML = Object.entries(db.ecue).filter(([_,e])=>d==='ALL'||e.Discipline===d).map(([id,e])=>`<option value="${id}">${e.Code_ECUE||''} — ${e.Intitule||''}</option>`).join('');
   document.getElementById('fForm').innerHTML = Object.entries(db.form).map(([id,f])=>`<option value="${id}">${f.Nom_Complet||''}</option>`).join('');
-  
   const datesOk = Object.entries(db.cal).filter(([_,c])=> c.Disponible_INSPE === true || c.Disponible_INSPE === 1 || String(c.Type_Journee).includes('INSPE'));
   const listeDates = datesOk.length ? datesOk : Object.entries(db.cal);
   document.getElementById('fDate').innerHTML = listeDates.map(([id,c])=>`<option value="${id}">${fD(c.Date_Jour)} (${c.Type_Journee||''})</option>`).join('');
