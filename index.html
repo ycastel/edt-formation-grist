@@ -78,7 +78,7 @@ function render() {
   let hS = `<table><tr><th>Discipline</th><th>ECUE</th><th>Responsable</th><th>Maquette</th><th>Planifié</th><th>Reste</th><th>État</th></tr>`, rel=[];
   Object.values(db.ecue).filter(e=>d==='ALL'||e.Discipline===d).forEach(e=>{
     const r=db.form[e.Responsable]||{}, rest=(e.Heures_Maquette||0)-(e.Heures_Planifiees||0);
-    hS += `<tr><td>${e.Discipline}</td><td><b>${e.Code_ECUE}</b> - ${e.Intitule}</td><td>${r.Nom_Complet||''}</td><td>${e.Heures_Maquette||0}h</td><td>${e.Heures_Planifiees||0}h</td><td><b>${rest}h</b></td><td>${e.Statut_Suivi||''}</td></tr>`;
+    hS += `<tr><td>${e.Discipline}</td><td><b>${e.Code_ECUE}</b> - ${e.Intitule}</td><td>${r.Nom_Complet||''}</td><td>${e.Heures_Maquette||0}h</td><td>${e.Heures_Planifiees||0}h</td><td><b>${rest}h</b></td><td>${e.Statut_Suivi||""}</td></tr>`;
     if(rest>0) rel.push({c:e.Code_ECUE,i:e.Intitule,n:r.Nom_Complet,m:r.Email,r:rest});
   });
   document.getElementById('outSuivi').innerHTML = hS+`</table>`;
