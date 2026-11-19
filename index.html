@@ -1,1 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Pilotage EDT Formation — Grist</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f8fafc;color:#1e293b;margin:0}
+header{background:#1e3a8a;color:#fff;padding:1.2rem 2rem}
+.box{max-width:1100px;margin:1rem auto;background:#fff;padding:1.2rem;border-radius:8px;border:1px solid #e2e8f0}
+.row{display:flex;flex-wrap:wrap;gap:.8rem;align-items:center;margin-bottom:1rem}
+input,select,textarea{padding:.5rem;border:1px solid #cbd5e1;border-radius:5px;font-size:.9rem}
+button{background:#1e3a8a;color:#fff;border:none;padding:.55rem 1rem;border-radius:5px;cursor:pointer;font-weight:600}
+button.ok{background:#16a34a} button.tab{background:#e2e8f0;color:#334155} button.tab.active{background:#1e3a8a;color:#fff}
+table{width:100%;border-collapse:collapse;margin-top:.8rem;font-size:.88rem}
+th,td{border:1px solid #e2e8f0;padding:.5rem;text-align:left} th{background:#f1f5f9}
+.panel{display:none} .panel.active{display:block}
+.alert{padding:.7rem;border-radius:6px;margin-top:.8rem;font-weight:600}
+.err{background:#fee2e2;color:#991b1b} .succ{background:#dcfce7;color:#166534}
+</style>
+</head>
+<body>
+<header><h2 style="margin:0">📅 Pilotage EDT Formation (INSPE / Rectorat) — Grist 3pz5iXJkTkwR</h2></header>
+<div class="box">
+  <div class="row">
+    <input type="password" id="apiKey" placeholder="Clé API Grist..." style="width:260px">
+    <button onclick="connecter()">🔄 Synchroniser</button>
+    <select id="filtreDisc" onchange="rendre()"><option value="ALL">Toutes les disciplines</option></select>
+    <span id="etat" style="font-weight:600;color:#64748b">Non connecté</span>
+  </div>
+  <div class="row">
+    <button class="tab active" onclick="onglet('p1',this)">➕ Planifier une séance</button>
+    <button class="tab" onclick="onglet('p2',this)">🗓️ Planning & Export Word</button>
+    <button class="tab" onclick="onglet('p3',this)">⏳ Suivi & Relances</button>
+  </div>
+
+  <div id="p1" class="panel active">
+    <div class="row">
+      <select id="sEcue"></select>
+      <select id="sForm"></select>
+      <select id="sDate"></select>
+      <select id="sCren"><option>Matin (09h-12h)</option><option>Après-midi (13h30-16h30)</option><option>Journée complète (09h-16h30)</option></select>
+      <input type="number" id="sDur" value="3" min="1" max="8" step="0.5" style="width:70px" title="Durée (h)">
+      <input type="text" id="sSalle" placeholder="Salle / Matériel TP">
+      <button class="ok" onclick="ajouter()">✅ Enregistrer dans Grist</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div id="p2" class="panel">
+    <button onclick="exportWord()">📘 Télécharger en Word (.doc)</button>
+    <div id="zoneEdt"></div>
+  </div>
+
+  <div id="p3" class="panel">
+    <div id="zoneSuivi"></div>
+    <div id="zoneRel"></div>
+  </div>
+</div>
+
+<script>
+const URL_API = "https://numerique.gouv.fr";
+let db = { cal:{}, form:{}, ecue:{}, sais:{} };
+
+window.onload = () => {
+  const k = localStorage.getItem("g_key");
+  if(k){ document.getElementById("apiKey").value = k; charger(); }
+};
+function onglet(id, b){
+  document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.getElementById(id).classList.add("active"); b.classList.add("active");
+}
+function connecter(){
+  const k = document.getElementById("apiKey").value.trim();
+  if(!k) return alert("Saisissez votre clé API.");
+  localStorage.setItem("g_key", k); charger();
+}
+async function getT(t, k){
+  const r = await fetch(`${URL_API}/tables/${t}/records`, {headers:{"Authorization":`Bearer ${k}`}});
+  if(!r.ok) throw new Error(r.status);
+  const m = {}; (await r.json()).records.forEach(x => m[x.id] = x.fields); return m;
+}
+async function charger(){
+  const k = document.getElementById("apiKey").value.trim(), st = document.getElementById("etat");
+  st.textContent = "⏳ Chargement...";
+  try {
+    const [cal, form, ecue, sais] = await Promise.all(["Calendrier_Cadre","Formateurs","Maquette_ECUE","Saisies_EDT"].map(t=>getT(t,k)));
+    db = {cal, form, ecue, sais};
+    st.innerHTML = "<span style='color:#16a34a'>✅ Connecté</span>";
+    const f = document.getElementById("filtreDisc"), cur = f.value;
+    const ds = [...new Set(Object.values(ecue).map(e=>e.Discipline).filter(Boolean))].sort();
+    f.innerHTML = "<option value='ALL'>Toutes les disciplines</option>" + ds.map(d=>`<option>${d}</option>`).join("");
+    if(ds.includes(cur)) f.value = cur;
+    rendre();
+  } catch(e){ st.innerHTML = `<span style='color:#dc2626'>❌ Erreur (${e.message})</span>`; }
+}
+function fDate(ts){ return typeof ts==="number" ? new Date(ts*1000).toLocaleDateString("fr-FR") : ""; }
+function rendre(){
+  const d = document.getElementById("filtreDisc").value;
+  document.getElementById("sEcue").innerHTML = Object.entries(db.ecue).filter(([_,e])=>d==="ALL"||e.Discipline===d).map(([id,e])=>`<option value="${id}">${e.Code_ECUE} - ${e.Intitule}</option>`).join("");
+  document.getElementById("sForm").innerHTML = Object.entries(db.form).map(([id,f])=>`<option value="${id}">${f.Nom_Complet}</option>`).join("");
+  document.getElementById("sDate").innerHTML = Object.entries(db.cal).filter(([_,c])=>c.Disponible_INSPE).map(([id,c])=>`<option value="${id}">${c.Libelle_Date||fDate(c.Date_Jour)}</option>`).join("");
+
+  const ligs = Object.values(db.sais).map(s=>{
+    const e = db.ecue[s.ECUE]||{}, c = db.cal[s.Date_Seance]||{}, f = db.form[s.Intervenant]||{};
+    return {tri:c.Date_Jour||0, sem:c.Semaine||"", date:fDate(c.Date_Jour), cren:s.Creneau||"", disc:e.Discipline||"", ecue:`${e.Code_ECUE||""} - ${e.Intitule||""}`, form:f.Nom_Complet||"", dur:s.Duree_Heures||0, salle:s.Salle_Besoins||"", ok:s.Alerte_Conflit||""};
+  }).filter(l=>d==="ALL"||l.disc===d).sort((a,b)=>a.tri-b.tri);
+
+  document.getElementById("zoneEdt").innerHTML = `<table><tr><th>Sem</th><th>Date</th><th>Créneau</th><th>ECUE</th><th>Intervenant</th><th>Durée</th><th>Salle</th><th>Statut</th></tr>` +
+    ligs.map(l=>`<tr><td>${l.sem}</td><td>${l.date}</td><td>${l.cren}</td><td>${l.ecue}</td><td>${l.form}</td><td>${l.dur}h</td><td>${l.salle}</td><td>${l.ok}</td></tr>`).join("") + `</table>`;
+
+  let hS = `<table><tr><th>Discipline</th><th>ECUE</th><th>Responsable</th><th>Maquette</th><th>Planifié</th><th>Reste</th><th>État</th></tr>`, rel = [];
+  Object.values(db.ecue).filter(e=>d==="ALL"||e.Discipline===d).forEach(e=>{
+    const r = db.form[e.Responsable]||{}, rest = (e.Heures_Maquette||0)-(e.Heures_Planifiees||0);
+    hS += `<tr><td>${e.Discipline}</td><td>${e.Code_ECUE} - ${e.Intitule}</td><td>${r.Nom_Complet||""}</td><td>${e.Heures_Maquette||0}h</td><td>${e.Heures_Planifiees||0}h</td><td><b>${rest}h</b></td><td>${e.Statut_Suivi||""}</td></tr>`;
+    if(rest>0) rel.push({c:e.Code_ECUE, i:e.Intitule, n:r.Nom_Complet, m:r.Email, r:rest});
+  });
+  document.getElementById("zoneSuivi").innerHTML = hS + `</table>`;
+  document.getElementById("zoneRel").innerHTML = rel.length ? `<div class="alert err">⏳ ${rel.length} ECUE à relancer</div><p><b>Cci :</b> ${[...new Set(rel.map(x=>x.m).filter(Boolean))].join("; ")}</p><textarea rows="5" style="width:100%">Bonjour,\nHeures restantes à planifier :\n${rel.map(x=>`- ${x.c} (${x.i}) : ${x.r}h (${x.n})`).join("\n")}</textarea>` : `<div class="alert succ">✅ Tout est complet !</div>`;
+}
+async function ajouter(){
+  const k = document.getElementById("apiKey").value.trim(), msg = document.getElementById("msg");
+  const eId = +document.getElementById("sEcue").value, dId = +document.getElementById("sDate").value, cr = document.getElementById("sCren").value;
+  const disc = (db.ecue[eId]||{}).Discipline;
+  if(Object.values(db.sais).some(s=>s.Date_Seance===dId && s.Creneau===cr && (db.ecue[s.ECUE]||{}).Discipline===disc))
+    return msg.innerHTML = `<div class="alert err">⚠️ Conflit : créneau déjà occupé en ${disc} !</div>`;
+  const r = await fetch(`${URL_API}/tables/Saisies_EDT/records`, {
+    method:"POST", headers:{"Authorization":`Bearer ${k}`,"Content-Type":"application/json"},
+    body:JSON.stringify({records:[{fields:{ECUE:eId, Intervenant:+document.getElementById("sForm").value, Date_Seance:dId, Creneau:cr, Duree_Heures:+document.getElementById("sDur").value, Salle_Besoins:document.getElementById("sSalle").value}}]})
+  });
+  msg.innerHTML = r.ok ? `<div class="alert succ">🎉 Séance ajoutée dans Grist !</div>` : `<div class="alert err">❌ Erreur ${r.status}</div>`;
+  if(r.ok) charger();
+}
+function exportWord(){
+  const html = `<html xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset='utf-8'></head><body><h2>EDT Prévisionnel</h2>${document.getElementById("zoneEdt").innerHTML}</body></html>`;
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(['\ufeff', html], {type:'application/msword'})); a.download = "EDT_Formation.doc"; a.click();
+}
+</script>
+</body>
+</html>
 
