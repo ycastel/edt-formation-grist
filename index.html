@@ -2,24 +2,25 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<script src="https://numerique.gouv.fr"></script>
+<script src="https://getgrist.com"></script>
 <style>
 body{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;margin:0;padding:1rem}
 .card{background:#fff;padding:1.2rem;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:1rem}
 .row{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center}
-select,input,textarea{padding:.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.9rem;min-width:140px}
+select,input,textarea{padding:.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:.9rem;min-width:130px}
 .btn{background:#1e3a8a;color:#fff;border:none;padding:.55rem 1rem;border-radius:6px;font-weight:600;cursor:pointer}
 .btn-ok{background:#16a34a}
 table{width:100%;border-collapse:collapse;margin-top:.8rem;font-size:.88rem}
 th,td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left} th{background:#f1f5f9}
-.b{padding:2px 8px;border-radius:12px;font-size:.78rem;font-weight:700} .ok{background:#dcfce7;color:#166534} .err{background:#fee2e2;color:#991b1b}
+.tag-inspe{background:#dbeafe;color:#1e40af;padding:2px 6px;border-radius:4px;font-size:.78rem;font-weight:600}
+.tag-rect{background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:4px;font-size:.78rem;font-weight:600}
 </style>
 </head>
 <body>
 <div class="card row" style="justify-content:space-between">
   <div>
-    <h3 style="margin:0;color:#1e3a8a">📅 Portail EDT — Formation Initiale</h3>
-    <small id="diag" style="color:#64748b;font-weight:600">⏳ Connexion à Grist en cours...</small>
+    <h3 style="margin:0;color:#1e3a8a">📅 Portail EDT — Formation Initiale (INSPE / Rectorat)</h3>
+    <small id="diag" style="color:#64748b;font-weight:600">⏳ Connexion à Grist...</small>
   </div>
   <div class="row">
     <button class="btn" onclick="init()">🔄 Actualiser</button>
@@ -29,79 +30,164 @@ th,td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left} th{backgro
 </div>
 
 <div class="card">
-  <h4 style="margin:0 0 .8rem 0">➕ Saisir un créneau</h4>
+  <div class="row" style="justify-content:space-between;margin-bottom:.8rem">
+    <h4 style="margin:0">➕ Saisir un créneau</h4>
+    <div class="row">
+      <label style="font-weight:600;font-size:.9rem">Catégorie de saisie :</label>
+      <select id="catSaisie" onchange="render()" style="border:2px solid #1e3a8a;font-weight:600">
+        <option value="INSPE">🎓 Équipe INSPE</option>
+        <option value="Rectorat">🏛️ Équipe Rectorat</option>
+      </select>
+    </div>
+  </div>
   <div class="row">
-    <select id="fEcue"></select><select id="fForm"></select><select id="fDate"></select>
+    <select id="fEcue" onchange="majDates()"></select>
+    <select id="fForm"></select>
+    <select id="fDate"></select>
     <select id="fCren"><option>Matin (09h-12h)</option><option>Après-midi (13h30-16h30)</option><option>Journée complète (09h-16h30)</option></select>
     <input type="number" id="fDur" value="3" min="1" max="8" step="0.5" style="width:65px;min-width:65px" title="Heures">
     <input type="text" id="fSalle" placeholder="Salle / Matériel TP">
     <button class="btn btn-ok" onclick="save()">✅ Enregistrer</button>
-  </div><div id="fb" style="margin-top:.6rem;font-weight:600"></div>
+  </div>
+  <div id="fb" style="margin-top:.6rem;font-weight:600"></div>
 </div>
 
-<div class="card"><h4 style="margin:0">🗓️ Planning consolidé</h4><div id="outEdt"></div></div>
-<div class="card"><h4 style="margin:0">⏳ Suivi Maquette & Relances</h4><div id="outSuivi"></div><div id="outRel" style="margin-top:1rem"></div></div>
+<div class="card">
+  <h4 style="margin:0">🗓️ Planning global consolidé (INSPE + Rectorat visibles par tous)</h4>
+  <div id="outEdt"></div>
+</div>
+
+<div class="card">
+  <h4 style="margin:0">⏳ Suivi Maquette & Relances</h4>
+  <div id="outSuivi"></div>
+  <div id="outRel" style="margin-top:1rem"></div>
+</div>
 
 <script>
 let db = {cal:{},form:{},ecue:{},sais:{}};
+
 function toMap(t) {
   const m = {}; if(!t || !t.id) return m;
   t.id.forEach((id, i) => { m[id] = {}; Object.keys(t).forEach(c => { if(c!=='id') m[id][c] = t[c][i]; }); });
   return m;
 }
+
 async function init() {
   const diag = document.getElementById('diag');
   try {
-    const [c, f, e, s] = await Promise.all(['Calendrier_Cadre','Formateurs','Maquette_ECUE','Saisies_EDT'].map(t => grist.docApi.fetchTable(t)));
+    const [c, f, e, s] = await Promise.all([
+      grist.docApi.fetchTable('Calendrier_Cadre'),
+      grist.docApi.fetchTable('Formateurs'),
+      grist.docApi.fetchTable('Maquette_ECUE'),
+      grist.docApi.fetchTable('Saisies_EDT')
+    ]);
     db = { cal: toMap(c), form: toMap(f), ecue: toMap(e), sais: toMap(s) };
     diag.style.color = '#16a34a';
-    diag.textContent = `✅ Connecté (${Object.keys(db.ecue).length} ECUE, ${Object.keys(db.form).length} formateurs, ${Object.keys(db.cal).length} dates)`;
+    diag.textContent = `✅ Connecté (${Object.keys(db.sais).length} séances planifiées)`;
     const sel = document.getElementById('disc'), cur = sel.value;
     const ds = [...new Set(Object.values(db.ecue).map(x => x.Discipline).filter(Boolean))].sort();
     sel.innerHTML = "<option value='ALL'>Toutes disciplines</option>" + ds.map(d => `<option>${d}</option>`).join("");
     if(ds.includes(cur)) sel.value = cur;
     render();
-  } catch (err) { diag.style.color='#dc2626'; diag.textContent=`❌ Erreur : ${err.message || err}`; }
+  } catch (err) {
+    diag.style.color = '#dc2626';
+    diag.textContent = `❌ Erreur : ${err.message || err}`;
+  }
 }
-grist.ready({ requiredAccess: 'full' });
-grist.onRecords(() => init());
-setTimeout(init, 600);
+
+window.addEventListener('load', () => {
+  grist.ready({ requiredAccess: 'full' });
+  grist.onRecords(() => init());
+  setTimeout(init, 500);
+});
 
 function fD(ts) { return typeof ts === 'number' ? new Date(ts*1000).toLocaleDateString('fr-FR') : String(ts||''); }
+
+function majDates() {
+  const cat = document.getElementById('catSaisie').value;
+  const eId = +document.getElementById('fEcue').value;
+  const discActive = (db.ecue[eId] || {}).Discipline || '';
+
+  const datesCat = Object.entries(db.cal).filter(([_,c]) => {
+    const type = String(c.Type_Journee || '');
+    return cat === 'INSPE' ? type.includes('INSPE') : type.includes('Rectorat');
+  });
+
+  document.getElementById('fDate').innerHTML = datesCat.length 
+    ? datesCat.map(([id,c]) => {
+        const dNum = +id;
+        // Cherche les réservations existantes sur cette date pour la même discipline
+        const prises = Object.values(db.sais).filter(s => s.Date_Seance === dNum && (db.ecue[s.ECUE]||{}).Discipline === discActive);
+        let etatTxt = '🟢 Libre';
+        if (prises.length > 0) {
+          const details = prises.map(p => `${p.Creneau} (${(db.ecue[p.ECUE]||{}).Code_ECUE || ''})`).join(', ');
+          etatTxt = `🟠 Pris : ${details}`;
+        }
+        return `<option value="${id}">${fD(c.Date_Jour)} — ${etatTxt}</option>`;
+      }).join('')
+    : `<option value="">Aucune date ${cat} configurée</option>`;
+}
+
 function render() {
   const d = document.getElementById('disc').value;
-  document.getElementById('fEcue').innerHTML = Object.entries(db.ecue).filter(([_,e])=>d==='ALL'||e.Discipline===d).map(([id,e])=>`<option value="${id}">${e.Code_ECUE||''} — ${e.Intitule||''}</option>`).join('');
-  document.getElementById('fForm').innerHTML = Object.entries(db.form).map(([id,f])=>`<option value="${id}">${f.Nom_Complet||''}</option>`).join('');
-  const datesOk = Object.entries(db.cal).filter(([_,c])=> c.Disponible_INSPE === true || c.Disponible_INSPE === 1 || String(c.Type_Journee).includes('INSPE'));
-  document.getElementById('fDate').innerHTML = (datesOk.length ? datesOk : Object.entries(db.cal)).map(([id,c])=>`<option value="${id}">${fD(c.Date_Jour)} (${c.Type_Journee||''})</option>`).join('');
 
-  const rows = Object.values(db.sais).map(s=>{
+  document.getElementById('fEcue').innerHTML = Object.entries(db.ecue)
+    .filter(([_,e]) => d==='ALL' || e.Discipline===d)
+    .map(([id,e]) => `<option value="${id}">${e.Code_ECUE||''} — ${e.Intitule||''}</option>`).join('');
+
+  document.getElementById('fForm').innerHTML = Object.entries(db.form)
+    .map(([id,f]) => `<option value="${id}">${f.Nom_Complet||''}</option>`).join('');
+
+  majDates();
+
+  const rows = Object.values(db.sais).map(s => {
     const e=db.ecue[s.ECUE]||{}, c=db.cal[s.Date_Seance]||{}, f=db.form[s.Intervenant]||{};
-    return {tri:c.Date_Jour||0,sem:c.Semaine||'',date:fD(c.Date_Jour),cren:s.Creneau||'',disc:e.Discipline||'',ecue:`<b>${e.Code_ECUE||''}</b> - ${e.Intitule||''}`,form:f.Nom_Complet||'',dur:s.Duree_Heures||0,salle:s.Salle_Besoins||'',ok:s.Alerte_Conflit||''};
-  }).filter(l=>d==='ALL'||l.disc===d).sort((a,b)=>a.tri-b.tri);
+    const isRect = String(c.Type_Journee||'').includes('Rectorat');
+    const orgTag = isRect ? `<span class="tag-rect">🏛️ Rectorat</span>` : `<span class="tag-inspe">🎓 INSPE</span>`;
+    return {
+      tri:c.Date_Jour||0, sem:c.Semaine||'', date:fD(c.Date_Jour), org:orgTag,
+      cren:s.Creneau||'', disc:e.Discipline||'', ecue:`<b>${e.Code_ECUE||''}</b> - ${e.Intitule||''}`,
+      form:f.Nom_Complet||'', dur:s.Duree_Heures||0, salle:s.Salle_Besoins||''
+    };
+  }).filter(l => d==='ALL' || l.disc===d).sort((a,b) => a.tri - b.tri);
 
-  document.getElementById('outEdt').innerHTML = `<table><tr><th>Sem</th><th>Date</th><th>Créneau</th><th>ECUE</th><th>Intervenant</th><th>Durée</th><th>Salle</th><th>Statut</th></tr>`+
-    rows.map(l=>`<tr><td>${l.sem}</td><td>${l.date}</td><td>${l.cren}</td><td>${l.ecue}</td><td>${l.form}</td><td>${l.dur}h</td><td>${l.salle}</td><td><span class="b ${l.ok==='✅ OK'?'ok':'err'}">${l.ok}</span></td></tr>`).join('')+`</table>`;
+  document.getElementById('outEdt').innerHTML = `<table><tr><th>Sem</th><th>Date</th><th>Origine</th><th>Créneau</th><th>ECUE</th><th>Intervenant</th><th>Durée</th><th>Salle</th></tr>` +
+    rows.map(l => `<tr><td>${l.sem}</td><td>${l.date}</td><td>${l.org}</td><td>${l.cren}</td><td>${l.ecue}</td><td>${l.form}</td><td>${l.dur}h</td><td>${l.salle}</td></tr>`).join('') + `</table>`;
 
   let hS = `<table><tr><th>Discipline</th><th>ECUE</th><th>Responsable</th><th>Maquette</th><th>Planifié</th><th>Reste</th><th>État</th></tr>`, rel=[];
-  Object.values(db.ecue).filter(e=>d==='ALL'||e.Discipline===d).forEach(e=>{
+  Object.values(db.ecue).filter(e => d==='ALL' || e.Discipline===d).forEach(e => {
     const r=db.form[e.Responsable]||{}, rest=(e.Heures_Maquette||0)-(e.Heures_Planifiees||0);
     hS += `<tr><td>${e.Discipline||''}</td><td><b>${e.Code_ECUE||''}</b> - ${e.Intitule||''}</td><td>${r.Nom_Complet||''}</td><td>${e.Heures_Maquette||0}h</td><td>${e.Heures_Planifiees||0}h</td><td><b>${rest}h</b></td><td>${e.Statut_Suivi||''}</td></tr>`;
     if(rest>0) rel.push({c:e.Code_ECUE,i:e.Intitule,n:r.Nom_Complet,m:r.Email,r:rest});
   });
-  document.getElementById('outSuivi').innerHTML = hS+`</table>`;
-  document.getElementById('outRel').innerHTML = rel.length ? `<p style="color:#991b1b"><b>⏳ ${rel.length} ECUE incomplets (Cci) :</b> ${[...new Set(rel.map(x=>x.m).filter(Boolean))].join('; ')}</p><textarea rows="4" style="width:100%">Bonjour,\nCréneaux restants :\n${rel.map(x=>`- ${x.c} (${x.i}) : ${x.r}h (${x.n})`).join('\n')}</textarea>` : `<p style="color:#166534"><b>✅ Tout est complet !</b></p>`;
+  document.getElementById('outSuivi').innerHTML = hS + `</table>`;
+  document.getElementById('outRel').innerHTML = rel.length 
+    ? `<p style="color:#991b1b"><b>⏳ ${rel.length} ECUE incomplets (Cci) :</b> ${[...new Set(rel.map(x=>x.m).filter(Boolean))].join('; ')}</p><textarea rows="4" style="width:100%">Bonjour,\nCréneaux restants :\n${rel.map(x=>`- ${x.c} (${x.i}) : ${x.r}h (${x.n})`).join('\n')}</textarea>` 
+    : `<p style="color:#166534"><b>✅ Tout est complet !</b></p>`;
 }
+
 async function save() {
   const fb = document.getElementById('fb');
-  const eId=+document.getElementById('fEcue').value, dId=+document.getElementById('fDate').value, cr=document.getElementById('fCren').value;
+  const dVal = document.getElementById('fDate').value;
+  if(!dVal) { fb.innerHTML=`<span style="color:#dc2626">⚠️ Sélectionnez une date valide.</span>`; return; }
+
+  const eId=+document.getElementById('fEcue').value, dId=+dVal, cr=document.getElementById('fCren').value;
   const disc=(db.ecue[eId]||{}).Discipline;
-  if(Object.values(db.sais).some(s=>s.Date_Seance===dId&&s.Creneau===cr&&(db.ecue[s.ECUE]||{}).Discipline===disc)) { fb.innerHTML=`<span style="color:#dc2626">⚠️ Conflit en ${disc} !</span>`; return; }
-  await grist.docApi.applyUserActions([['AddRecord', 'Saisies_EDT', null, { ECUE:eId, Intervenant:+document.getElementById('fForm').value, Date_Seance:dId, Creneau:cr, Duree_Heures:+document.getElementById('fDur').value, Salle_Besoins:document.getElementById('fSalle').value }]]);
-  fb.innerHTML=`<span style="color:#16a34a">🎉 Enregistré !</span>`; init();
+  if(Object.values(db.sais).some(s=>s.Date_Seance===dId&&s.Creneau===cr&&(db.ecue[s.ECUE]||{}).Discipline===disc)) {
+    fb.innerHTML=`<span style="color:#dc2626">⚠️ Conflit en ${disc} sur ce créneau !</span>`; return;
+  }
+  await grist.docApi.applyUserActions([['AddRecord', 'Saisies_EDT', null, {
+    ECUE:eId, Intervenant:+document.getElementById('fForm').value, Date_Seance:dId, Creneau:cr,
+    Duree_Heures:+document.getElementById('fDur').value, Salle_Besoins:document.getElementById('fSalle').value
+  }]]);
+  fb.innerHTML=`<span style="color:#16a34a">🎉 Séance enregistrée !</span>`;
+  init();
 }
+
 function expWord() {
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff',`<html xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset='utf-8'></head><body><h2>EDT Prévisionnel</h2>${document.getElementById('outEdt').innerHTML}</body></html>`],{type:'application/msword'})); a.download='EDT.doc'; a.click();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['\ufeff',`<html xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset='utf-8'></head><body><h2>EDT Prévisionnel (INSPE / Rectorat)</h2>${document.getElementById('outEdt').innerHTML}</body></html>`],{type:'application/msword'}));
+  a.download='EDT_Formation.doc'; a.click();
 }
 </script>
 </body>
