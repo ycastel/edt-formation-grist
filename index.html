@@ -65,7 +65,7 @@ function render() {
   const d = document.getElementById('disc').value;
   document.getElementById('fEcue').innerHTML = Object.entries(db.ecue).filter(([_,e])=>d==='ALL'||e.Discipline===d).map(([id,e])=>`<option value="${id}">${e.Code_ECUE} — ${e.Intitule}</option>`).join('');
   document.getElementById('fForm').innerHTML = Object.entries(db.form).map(([id,f])=>`<option value="${id}">${f.Nom_Complet}</option>`).join('');
-  document.getElementById('fDate').innerHTML = Object.entries(db.cal).filter(([_,c])=>c.Disponible_INSPE).map(([id,c])=>`<option value="${id}">${c.Libelle_Date||fD(c.Date_Jour)}</option>`).join('');
+  document.getElementById('fDate').innerHTML = Object.entries(db.cal).filter(([_,c])=>c.Disponible_INSPE || c.Type_Journee === 'INSPE (Disponible)').map(([id,c])=>`<option value="${id}">${fD(c.Date_Jour)} — ${c.Type_Journee || ''}</option>`).join('');
 
   const rows = Object.values(db.sais).map(s=>{
     const e=db.ecue[s.ECUE]||{}, c=db.cal[s.Date_Seance]||{}, f=db.form[s.Intervenant]||{};
