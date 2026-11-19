@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<script src="https://getgrist.com"></script>
+<script src="https://numerique.gouv.fr"></script>
 <style>
 body{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;margin:0;padding:1rem}
 .card{background:#fff;padding:1.2rem;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:1rem}
@@ -76,9 +76,13 @@ async function init() {
   }
 }
 
-grist.ready({ requiredAccess: 'full' });
-setTimeout(init, 600);
-grist.onRecords(() => init());
+grist.ready({
+  requiredAccess: 'full',
+  onEditOptions: () => {}
+});
+grist.onOptions(() => init());
+setTimeout(init, 1000);
+
 
 function fD(ts) { return typeof ts === 'number' ? new Date(ts*1000).toLocaleDateString('fr-FR') : String(ts||''); }
 
