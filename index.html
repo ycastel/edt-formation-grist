@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<script src="https://getgrist.com"></script>
+<script src="https://jsdelivr.net" onerror="this.onerror=null;this.src='https://unpkg.com'"></script>
 <style>
 body{font-family:system-ui,sans-serif;background:#f8fafc;color:#0f172a;margin:0;padding:1rem}
 .card{background:#fff;padding:1.2rem;border-radius:10px;border:1px solid #e2e8f0;margin-bottom:1rem}
@@ -31,9 +31,7 @@ th,td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left} th{backgro
 <div class="card">
   <h4 style="margin:0 0 .8rem 0">➕ Saisir un créneau</h4>
   <div class="row">
-    <select id="fEcue"></select>
-    <select id="fForm"></select>
-    <select id="fDate"></select>
+    <select id="fEcue"></select><select id="fForm"></select><select id="fDate"></select>
     <select id="fCren"><option>Matin (09h-12h)</option><option>Après-midi (13h30-16h30)</option><option>Journée complète (09h-16h30)</option></select>
     <input type="number" id="fDur" value="3" min="1" max="8" step="0.5" style="width:65px;min-width:65px" title="Heures">
     <input type="text" id="fSalle" placeholder="Salle / Matériel TP">
@@ -46,27 +44,16 @@ th,td{padding:.55rem;border-bottom:1px solid #e2e8f0;text-align:left} th{backgro
 
 <script>
 let db = {cal:{},form:{},ecue:{},sais:{}};
-
 function toMap(t) {
   const m = {}; if(!t || !t.id) return m;
   t.id.forEach((id, i) => { m[id] = {}; Object.keys(t).forEach(c => { if(c!=='id') m[id][c] = t[c][i]; }); });
   return m;
 }
-
 async function init() {
   const diag = document.getElementById('diag');
-  if (typeof grist === 'undefined') {
-    diag.style.color = '#dc2626';
-    diag.textContent = '❌ Erreur : bibliothèque grist-plugin-api.js non chargée.';
-    return;
-  }
+  if (typeof grist === 'undefined') { diag.style.color='#dc2626'; diag.textContent='❌ Bibliothèque Grist indisponible.'; return; }
   try {
-    const [c, f, e, s] = await Promise.all([
-      grist.docApi.fetchTable('Calendrier_Cadre'),
-      grist.docApi.fetchTable('Formateurs'),
-      grist.docApi.fetchTable('Maquette_ECUE'),
-      grist.docApi.fetchTable('Saisies_EDT')
-    ]);
+    const [c, f, e, s] = await Promise.all(['Calendrier_Cadre','Formateurs','Maquette_ECUE','Saisies_EDT'].map(t => grist.docApi.fetchTable(t)));
     db = { cal: toMap(c), form: toMap(f), ecue: toMap(e), sais: toMap(s) };
     diag.style.color = '#16a34a';
     diag.textContent = `✅ Connecté (${Object.keys(db.ecue).length} ECUE, ${Object.keys(db.form).length} formateurs, ${Object.keys(db.cal).length} dates)`;
@@ -75,31 +62,19 @@ async function init() {
     sel.innerHTML = "<option value='ALL'>Toutes disciplines</option>" + ds.map(d => `<option>${d}</option>`).join("");
     if(ds.includes(cur)) sel.value = cur;
     render();
-  } catch (err) {
-    diag.style.color = '#dc2626';
-    diag.textContent = `❌ Accès refusé ou table introuvable : ${err.message || err}`;
-  }
+  } catch (err) { diag.style.color='#dc2626'; diag.textContent=`❌ Erreur : ${err.message || err}`; }
 }
-
 window.addEventListener('load', () => {
-  if (typeof grist !== 'undefined') {
-    grist.ready({ requiredAccess: 'full' });
-    grist.onRecords(() => init());
-    setTimeout(init, 500);
-  } else {
-    document.getElementById('diag').textContent = '❌ Script API Grist bloqué par le navigateur.';
-  }
+  if (typeof grist !== 'undefined') { grist.ready({ requiredAccess: 'full' }); grist.onRecords(() => init()); setTimeout(init, 500); }
+  else { document.getElementById('diag').textContent = '❌ Réseau bloqué : impossible de charger le plugin Grist.'; }
 });
-
 function fD(ts) { return typeof ts === 'number' ? new Date(ts*1000).toLocaleDateString('fr-FR') : String(ts||''); }
-
 function render() {
   const d = document.getElementById('disc').value;
   document.getElementById('fEcue').innerHTML = Object.entries(db.ecue).filter(([_,e])=>d==='ALL'||e.Discipline===d).map(([id,e])=>`<option value="${id}">${e.Code_ECUE||''} — ${e.Intitule||''}</option>`).join('');
   document.getElementById('fForm').innerHTML = Object.entries(db.form).map(([id,f])=>`<option value="${id}">${f.Nom_Complet||''}</option>`).join('');
   const datesOk = Object.entries(db.cal).filter(([_,c])=> c.Disponible_INSPE === true || c.Disponible_INSPE === 1 || String(c.Type_Journee).includes('INSPE'));
-  const listeDates = datesOk.length ? datesOk : Object.entries(db.cal);
-  document.getElementById('fDate').innerHTML = listeDates.map(([id,c])=>`<option value="${id}">${fD(c.Date_Jour)} (${c.Type_Journee||''})</option>`).join('');
+  document.getElementById('fDate').innerHTML = (datesOk.length ? datesOk : Object.entries(db.cal)).map(([id,c])=>`<option value="${id}">${fD(c.Date_Jour)} (${c.Type_Journee||''})</option>`).join('');
 
   const rows = Object.values(db.sais).map(s=>{
     const e=db.ecue[s.ECUE]||{}, c=db.cal[s.Date_Seance]||{}, f=db.form[s.Intervenant]||{};
@@ -118,22 +93,14 @@ function render() {
   document.getElementById('outSuivi').innerHTML = hS+`</table>`;
   document.getElementById('outRel').innerHTML = rel.length ? `<p style="color:#991b1b"><b>⏳ ${rel.length} ECUE incomplets (Cci) :</b> ${[...new Set(rel.map(x=>x.m).filter(Boolean))].join('; ')}</p><textarea rows="4" style="width:100%">Bonjour,\nCréneaux restants :\n${rel.map(x=>`- ${x.c} (${x.i}) : ${x.r}h (${x.n})`).join('\n')}</textarea>` : `<p style="color:#166534"><b>✅ Tout est complet !</b></p>`;
 }
-
 async function save() {
   const fb = document.getElementById('fb');
   const eId=+document.getElementById('fEcue').value, dId=+document.getElementById('fDate').value, cr=document.getElementById('fCren').value;
   const disc=(db.ecue[eId]||{}).Discipline;
-  if(Object.values(db.sais).some(s=>s.Date_Seance===dId&&s.Creneau===cr&&(db.ecue[s.ECUE]||{}).Discipline===disc)) {
-    fb.innerHTML=`<span style="color:#dc2626">⚠️ Conflit en ${disc} !</span>`; return;
-  }
-  await grist.docApi.applyUserActions([['AddRecord', 'Saisies_EDT', null, {
-    ECUE:eId, Intervenant:+document.getElementById('fForm').value, Date_Seance:dId, Creneau:cr,
-    Duree_Heures:+document.getElementById('fDur').value, Salle_Besoins:document.getElementById('fSalle').value
-  }]]);
-  fb.innerHTML=`<span style="color:#16a34a">🎉 Enregistré !</span>`;
-  init();
+  if(Object.values(db.sais).some(s=>s.Date_Seance===dId&&s.Creneau===cr&&(db.ecue[s.ECUE]||{}).Discipline===disc)) { fb.innerHTML=`<span style="color:#dc2626">⚠️ Conflit en ${disc} !</span>`; return; }
+  await grist.docApi.applyUserActions([['AddRecord', 'Saisies_EDT', null, { ECUE:eId, Intervenant:+document.getElementById('fForm').value, Date_Seance:dId, Creneau:cr, Duree_Heures:+document.getElementById('fDur').value, Salle_Besoins:document.getElementById('fSalle').value }]]);
+  fb.innerHTML=`<span style="color:#16a34a">🎉 Enregistré !</span>`; init();
 }
-
 function expWord() {
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff',`<html xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset='utf-8'></head><body><h2>EDT Prévisionnel</h2>${document.getElementById('outEdt').innerHTML}</body></html>`],{type:'application/msword'})); a.download='EDT.doc'; a.click();
 }
