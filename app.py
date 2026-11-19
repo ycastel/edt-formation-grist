@@ -98,7 +98,7 @@ with onglet1:
         table_w = doc.add_table(rows=1, cols=7)
         table_w.style = "Table Grid"
         for i, h in enumerate(["Sem.", "Date", "Créneau", "ECUE", "Intervenant", "Durée", "Salle / Besoins"]):
-            table_w.rows.cells[i].text = h
+            table_w.rows[0].cells[i].text = h
 
         for _, row in df_edt.iterrows():
             cells = table_w.add_row().cells
